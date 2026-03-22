@@ -2,40 +2,56 @@ local LagCompensationModule = {}
 
 local HistoryModule = require(game.ServerStorage:WaitForChild("HistoryModule"))
 local GameConfig = require(game.ReplicatedStorage:WaitForChild("GameConfig"))
+local HitboxConfig = require(game.ReplicatedStorage:WaitForChild("HitboxConfig"))
 
 
 -- HELPERS ----------------------------------------------------------------------
 
-local function findClosestCFrameDict(enemyCFrames, rewindTimeStamp)
-	local closestCFrameDict = nil
+local function findClosestTimestampCFrame(enemyCFrames, rewindTimeStamp)
+	local closestCFrame = nil
 	local minTimeDifference = math.huge
-	for timeVal, cFrameDict in pairs(enemyCFrames) do
+
+	for timeVal, cFrame in pairs(enemyCFrames) do
+
 		local timeDiff = math.abs(rewindTimeStamp - timeVal)
+
 		if timeDiff < minTimeDifference then
-			closestCFrameDict = cFrameDict
+			closestCFrame = cFrame
 			minTimeDifference = timeDiff
 		end
+
 	end
-	return closestCFrameDict, minTimeDifference
+
+	return closestCFrame, minTimeDifference
 end
 
--- places part for visualization AND for raycast to hit it
-local function cloneAndPositionHitbox(hitboxPart, cframe, partType)
-	local clone = hitboxPart:Clone()
-	local weld = clone:FindFirstChildOfClass("WeldConstraint")
-	if weld then weld:Destroy() end
-	clone.Anchored = true
-	clone.CanCollide = false
-	clone.Material = Enum.Material.Neon
-	clone.Color = Color3.new(1, 0, 0)
+-- places part to see if raycast will hit it. 
+-- change transparency of the part for visualization. 
+local function spawnClonedHitbox(cFrame, partType)
+	local hitboxClone = Instance.new("Part")
+
+    hitboxClone.Name = "rewindHitbox"
+	hitboxClone.Anchored = true
+	hitboxClone.CanCollide = false
+	hitboxClone.Material = Enum.Material.Neon
+    
 	if partType == "head" then
-		clone.Color = Color3.new(0.458824, 0, 0)
-	end
-	clone.Transparency = 0.7
-	clone.CFrame = cframe
-	clone.Parent = workspace
-	game.Debris:AddItem(clone, 2.5)
-	return clone
+		hitboxClone.Color = Color3.new(0.231372, 0, 0)
+        hitboxClone.CFrame = cFrame * HitboxConfig.head.offset
+        hitboxClone.Size = HitboxConfig.head.size
+    elseif partType == "body" then
+        hitboxClone.Color = Color3.new(1, 0, 0)
+        hitboxClone.CFrame = cFrame * HitboxConfig.body.offset
+        hitboxClone.Size = HitboxConfig.body.size
+    else
+
+    end
+	
+	hitboxClone.Transparency = 0.7
+	
+	hitboxClone.Parent = workspace
+	game.Debris:AddItem(hitboxClone, 2.5)
+	return hitboxClone
 end
 
 
@@ -73,7 +89,7 @@ function LagCompensationModule.processShot(player, rayDir, clientTime, clientPos
 		local enemyCFrames = HistoryModule.getHistory(enemyPlayer)
 		if not enemyCFrames then continue end
 
-		local closestCFrameDict, minTimeDifference = findClosestCFrameDict(enemyCFrames, rewindTimeStamp)
+		local closestCFrame, minTimeDifference = findClosestTimestampCFrame(enemyCFrames, rewindTimeStamp)
 		
 		print(string.format("FOUND STORED SERVER STATE, REWIND TIMESTAMP VS STORED TIMESTAMP DIFFERENCE: %.5f", minTimeDifference))
 		print("")
@@ -87,11 +103,11 @@ function LagCompensationModule.processShot(player, rayDir, clientTime, clientPos
 			continue
 		end
 
-		-- rewound hitbox
-		local bodyClone = cloneAndPositionHitbox(enemyBodyHitbox, closestCFrameDict["body"], "body")
-		local headClone = cloneAndPositionHitbox(enemyHeadHitbox, closestCFrameDict["head"], "head")
+		-- spawn rewinded hitboxes
+		local bodyClone = spawnClonedHitbox(closestCFrame, "body")
+		local headClone = spawnClonedHitbox(closestCFrame, "head")
 		
-		-- add to list of hitboxes to check
+		-- store clone assigned to player for whenever we test to see if attack hit the rewind hitbox
 		rewindHitboxes[bodyClone] = { player = enemyPlayer, hitType = "body" }
 		rewindHitboxes[headClone] = { player = enemyPlayer, hitType = "head" }
 		

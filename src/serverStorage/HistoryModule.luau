@@ -9,32 +9,12 @@ local CFrameBroadcast = ReplicatedStorage:WaitForChild("CFrameBroadcast")
 local HitboxConfig = require(game.ReplicatedStorage:WaitForChild("HitboxConfig"))
 
 
-local hitboxCFrames = {}  -- holds history 
-
-local clientReportedCFrame = {}   
---[[ 
-holds the last CFrame sent by the client  {
-	[player1] = CFrame
-	[player2] = CFrame
-}
-
-*is updated irregularly, but is polled at a constant rate
-]]
-
-
-local MAX_HISTORY_SECS = 1.1
-
-
--- THIS IS HOW hitboxCFrames looks:
+local hitboxCFrames = {}  -- holds history
 --[[
 	{
 		[Player1] = {
-						[serverTick1] = {hrp = CFrame1
-								body = CFrame1
-								head = CFrame1
-						
-						},
-						[serverTick2] = CFrame2
+						[serverTick1] = CFrame1,
+						[serverTick2] = CFrame2,
 						[serverTick3] = CFrame3
 						...
 					},
@@ -49,6 +29,23 @@ local MAX_HISTORY_SECS = 1.1
 	}
 
 ]]
+
+
+local clientReportedCFrame = {} -- holds the last single CFrame sent by each client
+-- is updated irregularly, but is polled at a rate of BROADCAST_RATE
+--[[
+    {
+        [player1] = CFrame,
+        [player2] = CFrame
+    }
+
+    
+]]
+
+
+local MAX_HISTORY_SECS = 1.1
+
+
 
 
 -- helper function for debugging
@@ -96,7 +93,7 @@ end)
 local BROADCAST_RATE = 1/60
 local elapsed = 0
 
--- STORES ALL PLAYERS' CFRAMES WITH THE SAME SERVER TICK AND THEN BROADCASTS THESE CFRAMES TO ALL CLIENTS
+-- STORES ALL PLAYERS' CFRAMES IN THE HISTORY WITH THE SAME SERVER TICK AND THEN BROADCASTS THESE CFRAMES TO ALL CLIENTS
 RunService.Heartbeat:Connect(function(dt)
 	elapsed += dt
 	if elapsed < BROADCAST_RATE then return end
@@ -105,17 +102,14 @@ RunService.Heartbeat:Connect(function(dt)
 	local serverTime = workspace:GetServerTimeNow()
 	local latestCFrames = {}
 	
+    -- record latest CFrame of every player, all CFrames are stored with the same server time value.
 	for _, player in pairs(Players:GetPlayers()) do
 		if not hitboxCFrames[player] then continue end
 		local hrpCFrame = clientReportedCFrame[player]
 		if not hrpCFrame then continue end
 		
-		-- all players stored with same server time
-		hitboxCFrames[player][serverTime] = {
-			hrp = hrpCFrame,
-			body = hrpCFrame * HitboxConfig.body.offset,
-			head = hrpCFrame * HitboxConfig.head.offset
-		}
+		
+		hitboxCFrames[player][serverTime] = hrpCFrame
 		
 		latestCFrames[player.UserId] = hrpCFrame
 	end

@@ -1,20 +1,21 @@
+local HitboxConfig = require(game.ReplicatedStorage:WaitForChild("HitboxConfig"))
+
 local HitboxModule = {}
 
 function HitboxModule.createHitbox(character)
 	local hrp = character:WaitForChild("HumanoidRootPart")
 	
 	hrp:SetNetworkOwner(nil) -- nil means server owns it
-	print("hi... hm.")
 	-- Body hitbox
 	local hitbox = Instance.new("Part")
 	hitbox.Name = "Hitbox"
 	hitbox.Material = Enum.Material.SmoothPlastic
 
-	hitbox.Size = Vector3.new(3, 3, 3)
+	hitbox.Size = HitboxConfig.body.size
 	hitbox.Transparency = 1
 	hitbox.CanCollide = false
 	hitbox.Anchored = false
-	hitbox.CFrame = hrp.CFrame * CFrame.new(0, -1, 0) -- adjust offset as needed 		TODO: make this not so hard coded
+	hitbox.CFrame = hrp.CFrame * HitboxConfig.body.offset -- adjust offset as needed 		TODO: make this not so hard coded
 	hitbox.Parent = character
 
 	-- Weld it to HumanoidRootPart so it follows the player
@@ -29,11 +30,11 @@ function HitboxModule.createHitbox(character)
 	headHitbox.Name = "HeadHitbox"
 	headHitbox.Material = Enum.Material.SmoothPlastic
 	headHitbox.Color = Color3.fromRGB(255, 0, 0)
-	headHitbox.Size = Vector3.new(3, 1.5, 3)
+	headHitbox.Size = HitboxConfig.head.size
 	headHitbox.Transparency = 1
 	headHitbox.CanCollide = false
 	headHitbox.Anchored = false
-	headHitbox.CFrame = hitbox.CFrame * CFrame.new(0, hitbox.Size.Y/2 + headHitbox.Size.Y/2, 0) -- adjust Y as needed
+	headHitbox.CFrame = hrp.CFrame * HitboxConfig.head.offset -- adjust Y as needed
 	headHitbox.Parent = character
 
 	local headWeld = Instance.new("WeldConstraint")
