@@ -8,28 +8,31 @@
       "$path": "src/shared"
     },
 
+
     "ServerScriptService": {
-      "$className": "ServerScriptService",
-      "$path": "src/server"
+      "$path": "src/server/serverScripts",
+      "$className": "ServerScriptService"
+   
+
+      
     },
 
     "ServerStorage": {
       "$className": "ServerStorage",
-      "$path": "src/serverStorage"
+      "$path": "src/server/serverStorage"
     },
 
 
-    "StarterPlayer": {
-      "StarterPlayerScripts": {
-        "$className": "StarterPlayerScripts",
-        "$path": "src/client"
-      },
-
-      "StarterCharacterScripts": {
-        "$className": "StarterCharacterScripts",
-        "$path": "src/character"
-      }
+    "StarterPlayerScripts": {
+      "$className": "StarterPlayerScripts",
+      "$path": "src/client/playerScripts"
     },
+
+    "StarterCharacterScripts": {
+      "$className": "StarterCharacterScripts",
+      "$path": "src/client/characterScripts"
+    },
+    
 
     "Workspace": {
       "$properties": {
