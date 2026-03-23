@@ -52,13 +52,10 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		rayPart.CanCollide = false
 		rayPart.Material = Enum.Material.Neon
 		rayPart.Transparency = 0.6
-		-- visualize ray hit nothing, color it red and go full length
 		rayPart.Color = Color3.new(0.301961, 0.301961, 0.301961)
 		rayPart.Size = Vector3.new(0.1, 0.1, 1000)
 		rayPart.CFrame = camera.CFrame * CFrame.new(0, -0.1, -rayPart.Size.Z / 2 - .25) -- OFFSET OF -0.1 AND -.25 TO HELP SEE THE RAYCAST -- NOT ACTUALLY REPRESENTATIVE OF RAYCAST POSITION
 		rayPart.Parent = workspace
-		
-		-- auto cleanup after 1 second
 		game.Debris:AddItem(rayPart, 2.5)
 		
 	end
@@ -67,7 +64,6 @@ end)
 
 
 -- SPAWN PART AT EVERY OTHER PLAYER'S HITBOX POSITION -- THIS IS PURELY WHAT THE CLIENT SEES.
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 

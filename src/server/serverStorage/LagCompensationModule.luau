@@ -71,7 +71,7 @@ function LagCompensationModule.processShot(player, rayDir, clientTime, clientPos
 	local distance = (clientPos - serverPosition).Magnitude
 
 	if distance > 10 then -- threshold to account for lag
-		print("REJECTED: position too far from server position")
+		print("REJECTED: shot origin too far from server position")
 		return
 	end
 

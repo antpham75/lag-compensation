@@ -6,10 +6,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CFrameUpdate = ReplicatedStorage:WaitForChild("CFrameUpdate")
 local CFrameBroadcast = ReplicatedStorage:WaitForChild("CFrameBroadcast")
 
-local HitboxConfig = require(game.ReplicatedStorage:WaitForChild("HitboxConfig"))
+local BROADCAST_RATE = 1/60 -- rate at which server sends position info to all other clients
 
 
-local hitboxCFrames = {}  -- holds history
+local cFrameHistory = {}  
 --[[
 	{
 		[Player1] = {
@@ -61,21 +61,21 @@ end
 
 
 function HistoryModule.initPlayer(player)
-	hitboxCFrames[player] = {}
+	cFrameHistory[player] = {}
 end
 
 function HistoryModule.removePlayer(player)
-	hitboxCFrames[player] = nil
+	cFrameHistory[player] = nil
 end
 
 function HistoryModule.getHistory(player)
-	return hitboxCFrames[player]
+	return cFrameHistory[player]
 end
 
 
 -- runs automatically when module is required
 CFrameUpdate.OnServerEvent:Connect(function(player, hrpCFrame, clientTime)
-	if not hitboxCFrames[player] then return end
+	if not cFrameHistory[player] then return end
 	local character = player.Character
 	if not character then return end
 
@@ -89,8 +89,7 @@ CFrameUpdate.OnServerEvent:Connect(function(player, hrpCFrame, clientTime)
 	
 end)
 
--- send position update to all clients
-local BROADCAST_RATE = 1/60
+
 local elapsed = 0
 
 -- STORES ALL PLAYERS' CFRAMES IN THE HISTORY WITH THE SAME SERVER TICK AND THEN BROADCASTS THESE CFRAMES TO ALL CLIENTS
@@ -104,12 +103,12 @@ RunService.Heartbeat:Connect(function(dt)
 	
     -- record latest CFrame of every player, all CFrames are stored with the same server time value.
 	for _, player in pairs(Players:GetPlayers()) do
-		if not hitboxCFrames[player] then continue end
+		if not cFrameHistory[player] then continue end
 		local hrpCFrame = clientReportedCFrame[player]
 		if not hrpCFrame then continue end
 		
 		
-		hitboxCFrames[player][serverTime] = hrpCFrame
+		cFrameHistory[player][serverTime] = hrpCFrame
 		
 		latestCFrames[player.UserId] = hrpCFrame
 	end
@@ -128,11 +127,11 @@ RunService.Heartbeat:Connect(function()
 	local serverTime = workspace:GetServerTimeNow()
 	for _, player in pairs(Players:GetPlayers()) do
 		
-		if not hitboxCFrames[player] then continue end
+		if not cFrameHistory[player] then continue end
 		
-		for time, _ in pairs(hitboxCFrames[player]) do
+		for time, _ in pairs(cFrameHistory[player]) do
 			if serverTime - time > MAX_HISTORY_SECS then
-				hitboxCFrames[player][time] = nil
+				cFrameHistory[player][time] = nil
 			end
 		end
 		

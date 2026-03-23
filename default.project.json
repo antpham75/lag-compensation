@@ -22,16 +22,20 @@
       "$path": "src/server/serverStorage"
     },
 
+    "StarterPlayer": {
 
-    "StarterPlayerScripts": {
-      "$className": "StarterPlayerScripts",
-      "$path": "src/client/playerScripts"
-    },
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/client/playerScripts"
+      },
 
-    "StarterCharacterScripts": {
-      "$className": "StarterCharacterScripts",
-      "$path": "src/client/characterScripts"
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts",
+        "$path": "src/client/characterScripts"
+      }
+
     },
+    
     
 
     "Workspace": {
