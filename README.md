@@ -1,4 +1,4 @@
-# Roblox Lag-Compensated Combat System
+# Roblox FPS Lag-Compensation System
 
 A high-performance shooting and networking framework for Roblox using Luau. This system solves the "latency gap" in multiplayer shooters by rewinding the server state to match the shooter's perspective and smoothly interpolating enemy movements on the client.
 
