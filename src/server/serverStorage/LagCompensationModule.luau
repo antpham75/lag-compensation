@@ -1,13 +1,20 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local LagCompensationModule = {}
 
 local HistoryModule = require(game.ServerStorage:WaitForChild("HistoryModule"))
-local GameConfig = require(game.ReplicatedStorage:WaitForChild("GameConfig"))
-local HitboxConfig = require(game.ReplicatedStorage:WaitForChild("HitboxConfig"))
+local GameConfig = require(ReplicatedStorage:WaitForChild("GameConfig"))
+local HitboxConfig = require(ReplicatedStorage:WaitForChild("HitboxConfig"))
+local GunConfig = require(ReplicatedStorage:WaitForChild("GunConfig"))
+
+local DEBUG_MODE = false
+
+local CLIENT_SERVER_POS_THRESHOLD_STUDS = 10
 
 
 -- HELPERS ----------------------------------------------------------------------
 
-local function findClosestTimestampCFrame(enemyCFrames, rewindTimeStamp)
+local function findClosestCFrame(enemyCFrames, rewindTimeStamp)
 	local closestCFrame = nil
 	local minTimeDifference = math.huge
 
@@ -34,7 +41,8 @@ local function spawnClonedHitbox(cFrame, partType)
 	hitboxClone.Anchored = true
 	hitboxClone.CanCollide = false
 	hitboxClone.Material = Enum.Material.Neon
-    
+    hitboxClone.Transparency = 1
+
 	if partType == "head" then
 		hitboxClone.Color = Color3.new(0.231372, 0, 0)
         hitboxClone.CFrame = cFrame * HitboxConfig.head.offset
@@ -43,66 +51,124 @@ local function spawnClonedHitbox(cFrame, partType)
         hitboxClone.Color = Color3.new(1, 0, 0)
         hitboxClone.CFrame = cFrame * HitboxConfig.body.offset
         hitboxClone.Size = HitboxConfig.body.size
-    else
-
+	else
+		warn("invalid partType passed into spawnClonedHitbox")
     end
 	
-	hitboxClone.Transparency = 0.7
+	if DEBUG_MODE then
+		hitboxClone.Transparency = 0.7
+	end
+	
 	
 	hitboxClone.Parent = workspace
 	game.Debris:AddItem(hitboxClone, 2.5)
 	return hitboxClone
 end
 
+local function printEnemyCFrameReport(enemyPlayerName, rewindVsServerTimeDiff )
+	print("--------------------ENEMY CFRAME SEARCH-------------------------")
+	print(`ENEMY {enemyPlayerName} `)
+	print(string.format("Found closest server state, rewindTimestamp - storedTimestamp = %.5f", rewindVsServerTimeDiff))
+	print("")
+	print("     -------------------------     ")
+	print("")
+end
+
+local function createVisualRaycastPart(startPos, endPos, rayDir)
+	local rayPart = Instance.new("Part")
+	rayPart.Anchored = true
+	rayPart.CanCollide = false
+	rayPart.Material = Enum.Material.Neon
+	rayPart.Transparency = 0.5
+
+	if endPos then
+		local distance = (endPos - startPos).Magnitude
+		rayPart.CFrame = CFrame.lookAt(startPos, endPos) * CFrame.new(0, -0.1, -distance / 2 - 0.25)
+		rayPart.Color = Color3.new(0, 1, 0)
+		rayPart.Size = Vector3.new(0.1, 0.1, distance)
+	else
+		-- visualize ray hit nothing, color it red and go full length
+		rayPart.Color = Color3.new(1, 0, 0)
+		rayPart.Size = Vector3.new(0.1, 0.1, 1000)
+		rayPart.CFrame = CFrame.lookAt(startPos, startPos + rayDir) * CFrame.new(0, -0.1, -500 - 0.25)
+	end
+	rayPart.Parent = workspace
+	game.Debris:AddItem(rayPart, 2.5)
+end
+
+local function sanityCheckClientPos(clientPos, serverPos) 
+	if (clientPos - serverPos).Magnitude > CLIENT_SERVER_POS_THRESHOLD_STUDS then -- threshold to account for lag
+		warn("REJECTED: shot origin too far from server position")
+		return false
+	end
+
+	return true
+end
 
 
+local function raycastOntoParts(raycastOrigin, rayDir, partList)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterDescendantsInstances = partList
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
 
+	local result = workspace:Raycast(raycastOrigin, rayDir * 1000, raycastParams)
 
+	if not result then return nil end
 
-function LagCompensationModule.processShot(player, rayDir, clientTime, clientPos)
+	return result.Instance, result.Position
+end
+
+local function debugProcessShot(player, clientTime, hitboxHit, hitPosition, clientPos, rayDir, rewindHitboxes, enemyReports)
 	print("\n\n------------------------------------LAG COMPENSATION REPORT-------------------------------------------------------")
 	print(player.Name .. " SENT SHOT AT TIME --> " .. clientTime)
-	
-	local ping = player:GetNetworkPing()
-	print(`CLIENT'S PING: {ping}`)
-	
-	-- sanity check client position
-	local serverPosition = player.Character.HumanoidRootPart.Position
-	local distance = (clientPos - serverPosition).Magnitude
+	print(`CLIENT'S PING: {player:GetNetworkPing()}`)
 
-	if distance > 10 then -- threshold to account for lag
-		print("REJECTED: shot origin too far from server position")
-		return
+	for _, report in ipairs(enemyReports) do
+		printEnemyCFrameReport(report.enemyName, report.timeDiff)
 	end
+
+	if hitboxHit then
+		print("RESULTS: " .. player.Name .. " HIT " .. rewindHitboxes[hitboxHit].player.Name .. " ON THE " .. rewindHitboxes[hitboxHit].hitType)
+		createVisualRaycastPart(clientPos, hitPosition, rayDir)
+	else
+		print("RESULTS: " .. player.Name .. " DIDN'T HIT ANY ENEMY PLAYERS")
+		createVisualRaycastPart(clientPos, nil, rayDir)
+	end
+
+	print("------------------------------------------------------------------------------------------------------------------")
+end
+
+
+
+
+
+-- determine if client hit the shot on their screen
+function LagCompensationModule.processShot(player, rayDir, clientTime, clientPos)
+
+	if not sanityCheckClientPos(clientPos, player.Character.HumanoidRootPart.Position) then return end
 
 	local rewindTimeStamp = clientTime - GameConfig.INTERP_DELAY -- what the client saw at clientTime (synchronized time) was the server state at rewindTimeStamp
 
 	local rewindHitboxes = {} -- {[clonedHitbox]: enemyPlayer}
-	local hitboxArray = {}
-	
-	print("--------------------ENEMY CFRAME SEARCH-------------------------")
+	local hitboxArray = {} -- list of every single cloned hitbox
+
+	local enemyCFrameReports = {}
 	for _, enemyPlayer in pairs(game.Players:GetPlayers()) do
 
 		if enemyPlayer == player then continue end
-
-		print(`ENEMY {enemyPlayer.Name} `)
+		
+	
+		
 		local enemyCFrames = HistoryModule.getHistory(enemyPlayer)
 		if not enemyCFrames then continue end
 
-		local closestCFrame, minTimeDifference = findClosestTimestampCFrame(enemyCFrames, rewindTimeStamp)
+		local closestCFrame, minTimeDifference = findClosestCFrame(enemyCFrames, rewindTimeStamp)
 		
-		print(string.format("FOUND STORED SERVER STATE, REWIND TIMESTAMP VS STORED TIMESTAMP DIFFERENCE: %.5f", minTimeDifference))
-		print("")
-		print("     -------------------------     ")
-		print("")
-		local enemyBodyHitbox = enemyPlayer.Character:FindFirstChild("Hitbox")
-		local enemyHeadHitbox = enemyPlayer.Character:FindFirstChild("HeadHitbox")
-		
-		if not enemyBodyHitbox or not enemyHeadHitbox then 
-			warn(`NO HITBOXES FOUND... FOR ENEMY: {enemyPlayer.Name}`)
+		if not closestCFrame then
+			warn(`COULD NOT FIND CFRAMES FOR ENEMY: {enemyPlayer.Name}`)
 			continue
 		end
-
+		
 		-- spawn rewinded hitboxes
 		local bodyClone = spawnClonedHitbox(closestCFrame, "body")
 		local headClone = spawnClonedHitbox(closestCFrame, "head")
@@ -114,65 +180,37 @@ function LagCompensationModule.processShot(player, rayDir, clientTime, clientPos
 		table.insert(hitboxArray, bodyClone)
 		table.insert(hitboxArray, headClone)
 
+		if DEBUG_MODE then
+			table.insert(enemyCFrameReports, {
+				enemyName = enemyPlayer.Name,
+				timeDiff = minTimeDifference
+			})
+		end
 		
 	end
-	print("------------------------------------------------------------------------------------------------------------------")
-	
 
-	-- 3. CREATE RAYCAST PARAMS AND PERFORM RAYCAST
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = hitboxArray
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-	local result = workspace:Raycast(clientPos, rayDir * 1000, raycastParams)
 
-	
 
-	-- CREATE RAYCAST PART FOR VISUALIZING
-	local rayPart = Instance.new("Part")
-	rayPart.Anchored = true
-	rayPart.CanCollide = false
-	rayPart.Material = Enum.Material.Neon
-	rayPart.Transparency = 0.5
+	local hitboxHit, hitPosition = raycastOntoParts(clientPos, rayDir, hitboxArray)
 
-	-- 5. check result
-	if result and rewindHitboxes[result.Instance]["player"].Character:FindFirstChild("Humanoid") then
-		local enemyHit = rewindHitboxes[result.Instance]["player"]
-		local hitType = rewindHitboxes[result.Instance]["hitType"]
-		print("RESULTS: " .. player.Name .. " HIT " .. enemyHit.Name .. " ON THE " .. hitType)
+	-- apply damage
+	if hitboxHit and rewindHitboxes[hitboxHit]["player"].Character:FindFirstChild("Humanoid") then
+		local enemyHit = rewindHitboxes[hitboxHit]["player"]
+		local hitType = rewindHitboxes[hitboxHit]["hitType"]
 
-		-- visualize raycast hit, color it green
-		rayPart.Color = Color3.new(0, 1, 0)
-		local distance = (result.Position - clientPos).Magnitude
-		rayPart.Size = Vector3.new(0.1, 0.1, distance)
-		rayPart.CFrame = CFrame.lookAt(clientPos, result.Position) * CFrame.new(0, -0.1, -distance / 2 - 0.25)
-		
-		
-		
-		-- 6. damage enemy
 		local enemyHumanoid = enemyHit.Character:FindFirstChild("Humanoid")
 		
 		if hitType == "head" then
-			enemyHumanoid:TakeDamage(20)
+			enemyHumanoid:TakeDamage(GunConfig.HEAD_DAMAGE)
 		else
-			enemyHumanoid:TakeDamage(10)
+			enemyHumanoid:TakeDamage(GunConfig.BODY_DAMAGE)
 		end
-	
-	else
-		print("RESULTS: " .. player.Name .. " DIDN'T HIT ANY ENEMY PLAYERS" )
-
-		-- visualize ray hit nothing, color it red and go full length
-		rayPart.Color = Color3.new(1, 0, 0)
-		rayPart.Size = Vector3.new(0.1, 0.1, 1000)
-		rayPart.CFrame = CFrame.lookAt(clientPos, clientPos + rayDir) * CFrame.new(0, -0.1, -500 - 0.25)
 
 	end
 
-	rayPart.Parent = workspace
-
-	-- auto cleanup after 1 second
-	game.Debris:AddItem(rayPart, 2.5)
-
-	print("------------------------------------------------------------------------------------------------------------------")
+	if DEBUG_MODE then
+		debugProcessShot(player, clientTime, hitboxHit, hitPosition, clientPos, rayDir, rewindHitboxes, enemyCFrameReports)
+	end
 
 end
 

@@ -7,9 +7,10 @@ local Players = game:GetService("Players")
 local GameConfig = require(game.ReplicatedStorage:WaitForChild("GameConfig"))
 
 local SEND_RATE = 1/60
-local elapsed = 0
+
 local MAX_INTERP_BUFFER_SIZE = 20
 
+local DEBUG_MODE = false
 
 
 
@@ -20,6 +21,28 @@ local ShotConfirm = RS:WaitForChild("ShotConfirm")
 
 
 
+local function snapPlayer(player, cFrame)
+	local character = player.Character
+	if not character then return end
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	hrp.CFrame = cFrame
+end
+
+local function debugInterpolation(renderTime, buffer, prevSnapshot, nextSnapshot, nextSnapshotIndex)
+	print("latest snapshot time - renderTime = " .. string.format("%.5f", buffer[#buffer].time - renderTime))
+	print("# of extra buffer snapshots ahead of nextSnapshot: " .. #buffer - (nextSnapshotIndex or #buffer))
+
+	if prevSnapshot and not nextSnapshot then
+		print("CAN'T LERP. SNAPPING CFRAME...")
+	end
+end
+
+
+
+
+
+
+local elapsed = 0
 -- SEND position update to server
 RunService.Heartbeat:Connect(function(dt)
 	elapsed += dt
@@ -71,34 +94,27 @@ end)
 
 local INTERP_DELAY = GameConfig.INTERP_DELAY 
 
--- interpolate and position CFrames of other players
+-- interpolate CFrames of players and show the CFrame
 RunService.Heartbeat:Connect(function()
 	local renderTime = workspace:GetServerTimeNow() - INTERP_DELAY
 	
 	for player, buffer in pairs(interpolationBuffer) do
-		
-		
-		
-		-- 1. find prevSnapshot and nextSnapshot that surround renderTime
+
 		local prevSnapshot, nextSnapshot = nil, nil
-		local prevSnapshotIndex = #buffer
+		local nextSnapshotIndex = nil
 
 		for i, snapshot in ipairs(buffer) do
 			
 			if snapshot.time <= renderTime then
 				prevSnapshot = snapshot
 				
-				prevSnapshotIndex = i
-				
 			elseif snapshot.time > renderTime then
 				nextSnapshot = snapshot
+				nextSnapshotIndex = i
 				break
 				
 			end
 		end
-		
-		print("latest snapshot time - renderTime = " .. string.format("%.5f", buffer[#buffer].time - renderTime))
-		print("# of extra buffer snapshots ahead of nextSnapshot: " .. #buffer - prevSnapshotIndex - 1)
 		
 	
 		-- 2. if there is a prevSnapshot and nextSnapshot, get CFrame between them
@@ -118,14 +134,16 @@ RunService.Heartbeat:Connect(function()
 			-- can't lerp between, screw the lerp and just snap players to their latest found CFrame in interpolation buffer 
 			-- should probably do extrapolation later
 			if prevSnapshot then
-				print("CAN'T LERP. SNAPPING CFRAME...")
-				local character = player.Character
-				if not character then continue end
-				local hrp = character:FindFirstChild("HumanoidRootPart")
-				hrp.CFrame = prevSnapshot.cframe
+				snapPlayer(player, prevSnapshot.cframe)
 			end
 			
 		end
+
+		if DEBUG_MODE then
+			debugInterpolation(renderTime, buffer, prevSnapshot, nextSnapshot, nextSnapshotIndex)
+		end
+
+
 		
 	end
 end)
